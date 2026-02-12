@@ -1,0 +1,6 @@
+aiogram>=3.0.0
+aiohttp
+aiosqlite
+matplotlib
+tinytuya
+python-dotenv

@@ -142,7 +142,9 @@ class SvitloBot:
 
     async def _on_voltage_measured(self, voltage: float) -> None:
         msg_id = self._current_message_id or self.state_manager.state.last_light_message_id
-        await log_voltage(voltage, message_id=msg_id)
+
+        if self.state_manager.state.light_on:
+            await log_voltage(voltage, message_id=msg_id)
 
         if self._running and self.state_manager.state.light_on and msg_id:
             try:

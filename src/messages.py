@@ -48,10 +48,8 @@ def format_light_off_message(
     ]
 
     if next_power_on:
-        now = get_current_time()
-        if next_power_on > now:
-            next_on_str = format_time(next_power_on)
-            lines.append(f"🗓 Очікуємо за графіком о <b>{next_on_str}</b>")
+        next_on_str = format_time(next_power_on)
+        lines.append(f"🗓 Очікуємо за графіком о <b>{next_on_str}</b>")
 
     return "\n".join(lines)
 
