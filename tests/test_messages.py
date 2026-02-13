@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from messages import format_duration, format_time, format_light_off_message, format_light_on_message, format_voltage_caption
 from schedule import OutagePeriod
