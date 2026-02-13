@@ -164,19 +164,38 @@ async def generate_voltage_chart(hours: int = 24) -> Optional[bytes]:
         if not rows:
             return None
 
-        voltages = [r[0] for r in rows]
-        timestamps = [datetime.fromtimestamp(r[1], tz=ZoneInfo(TIMEZONE)) for r in rows]
+        voltages_all = [r[0] for r in rows]
+        timestamps_all = [datetime.fromtimestamp(r[1], tz=ZoneInfo(TIMEZONE)) for r in rows]
+
+        # Split data into segments if gap > 5 minutes (300s)
+        segments = []
+        if rows:
+            current_segment = [rows[0]]
+            for i in range(1, len(rows)):
+                if rows[i][1] - rows[i-1][1] > 300:
+                    segments.append(current_segment)
+                    current_segment = [rows[i]]
+                else:
+                    current_segment.append(rows[i])
+            segments.append(current_segment)
 
         plt.switch_backend('Agg')
         plt.rcParams['font.family'] = 'sans-serif'
         
         fig, ax = plt.subplots(figsize=(10, 6), dpi=100)
         
-        ax.fill_between(timestamps, voltages, 190, color='#3498db', alpha=0.1, label='_nolegend_')
-        
-        ax.plot(timestamps, voltages, color='#2980b9', linewidth=2, label='Напруга (V)', 
-                 marker='o', markersize=3, markerfacecolor='#34495e', markeredgecolor='none', alpha=0.8)
-        
+        first_plot = True
+        for segment in segments:
+            seg_voltages = [r[0] for r in segment]
+            seg_timestamps = [datetime.fromtimestamp(r[1], tz=ZoneInfo(TIMEZONE)) for r in segment]
+            
+            ax.fill_between(seg_timestamps, seg_voltages, 195, color='#3498db', alpha=0.1, label='_nolegend_')
+            
+            plot_label = 'Напруга (V)' if first_plot else '_nolegend_'
+            ax.plot(seg_timestamps, seg_voltages, color='#2980b9', linewidth=2, label=plot_label, 
+                     marker='o', markersize=3, markerfacecolor='#34495e', markeredgecolor='none', alpha=0.8)
+            first_plot = False
+            
         ax.axhline(y=230, color='#e67e22', linestyle='--', linewidth=1.5, alpha=0.6, label='Норма 230V')
         
         ax.set_facecolor('#ffffff')
@@ -192,8 +211,8 @@ async def generate_voltage_chart(hours: int = 24) -> Optional[bytes]:
         plt.xticks(rotation=45, ha='right', fontsize=9, color='#7f8c8d')
         plt.yticks(fontsize=9, color='#7f8c8d')
         
-        min_v = min(voltages) if voltages else 200
-        max_v = max(voltages) if voltages else 240
+        min_v = min(voltages_all) if voltages_all else 200
+        max_v = max(voltages_all) if voltages_all else 240
         ax.set_ylim(min(195, min_v - 5), max(235, max_v + 5))
         
         ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1), ncol=2, 
