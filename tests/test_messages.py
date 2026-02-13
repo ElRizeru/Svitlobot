@@ -36,5 +36,24 @@ class TestMessages(unittest.TestCase):
         self.assertIn("Наступне планове: <b>14:00 - 16:00</b>", msg)
         self.assertIn("Напруга в мережі: <b>230.5V</b>", msg)
 
+    def test_format_voltage_caption_past_restoration(self):
+        # Scenario: Expected restoration at 11:00, but it is 11:05 and light is still OFF.
+        # Expectation: Message should still contain "11:00".
+        
+        now = datetime(2026, 2, 13, 11, 5, 0, tzinfo=ZoneInfo(TIMEZONE))
+        next_on = datetime(2026, 2, 13, 11, 0, 0, tzinfo=ZoneInfo(TIMEZONE))
+        
+        caption = format_voltage_caption(
+            light_on=False,
+            duration_seconds=3600,
+            voltage=0.0,
+            stats=(None, None, None),
+            next_event=next_on,
+            event_time=now - timedelta(hours=1)
+        )
+        
+        self.assertIn("11:00", caption)
+        self.assertIn("Очікуємо за графіком о <b>11:00</b>", caption)
+
 if __name__ == '__main__':
     unittest.main()

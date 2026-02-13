@@ -82,16 +82,18 @@ class SvitloBot:
 
         await self._fetch_schedule()
         
-        self.voltage_monitor.start()
-        self._running = True
-
-        if self.state_manager.state.light_on and self.state_manager.state.last_light_message_id:
-            logger.info(f"Resuming updates for message {self.state_manager.state.last_light_message_id}")
-            self._current_message_id = self.state_manager.state.last_light_message_id
+        if self.state_manager.state.light_on:
+            if self.state_manager.state.last_light_message_id:
+                logger.info(f"Resuming updates for message {self.state_manager.state.last_light_message_id}")
+                self._current_message_id = self.state_manager.state.last_light_message_id
             
             voltage = await self.voltage_monitor.get_voltage_now()
-            if voltage:
+            if voltage and self._current_message_id:
                  await self._on_voltage_measured(voltage)
+
+            self.voltage_monitor.start()
+
+        self._running = True
 
         self._tasks = [
             asyncio.create_task(self._network_monitor_loop()),
@@ -148,7 +150,8 @@ class SvitloBot:
 
         if self._running and self.state_manager.state.light_on and msg_id:
             try:
-                duration = self.state_manager.get_current_duration()
+                duration = self.state_manager.state.last_light_duration
+                
                 event_time = self.state_manager.state.last_change
                 light_on = self.state_manager.state.light_on
                 
@@ -268,6 +271,7 @@ class SvitloBot:
         logger.info(f"Light OFF. Backdated to: {event_time.strftime('%H:%M:%S')}")
 
         await self.state_manager.clear_light_message()
+        await self.voltage_monitor.stop()
         self._current_message_id = None
 
         real_duration = await self.state_manager.set_light_on(False, custom_time=event_time) or duration
@@ -308,12 +312,15 @@ class SvitloBot:
                 sent_msg = await self.bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=photo, caption=initial_msg)
             else:
                 sent_msg = await self.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=initial_msg)
-                
+            
             await self.state_manager.set_light_message(sent_msg.message_id, real_duration)
             self._current_message_id = sent_msg.message_id
+            
+            self.voltage_monitor.start()
                 
         except TelegramAPIError:
             logger.exception("Failed to send ON message")
+            self.voltage_monitor.start()
 
 
 async def main() -> None:

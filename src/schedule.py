@@ -204,8 +204,6 @@ class ScheduleParser:
         
         for o in self.get_outages_for_date(data, from_time):
             if o.end > from_time:
-                if o.start <= from_time:
-                    continue
                 return o
         
         tmr_date = from_time + timedelta(days=1)

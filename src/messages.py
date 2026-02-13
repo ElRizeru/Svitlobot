@@ -141,9 +141,8 @@ def format_voltage_caption(
             end_str = format_time(next_event.end)
             lines.append(f"🗓 Наступне планове: <b>{start_str} - {end_str}</b>")
         else:
-            if next_event > now:
-                next_on_str = format_time(next_event)
-                lines.append(f"🗓 Очікуємо за графіком о <b>{next_on_str}</b>")
+            next_on_str = format_time(next_event)
+            lines.append(f"🗓 Очікуємо за графіком о <b>{next_on_str}</b>")
 
     lines.append(f"\n⚡️ Напруга: <b>{voltage:.1f} V</b>")
     

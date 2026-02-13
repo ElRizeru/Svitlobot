@@ -125,5 +125,32 @@ class TestScheduleParser(unittest.TestCase):
         self.assertIsNotNone(result_date)
         self.assertEqual(result_date, expected_time)
 
+    def test_get_next_outage_ongoing(self):
+        # Scenario: Outage 14:30 - 21:30. Current time 14:30:09.
+        # Expectation: Return 14:30 - 21:30 outage.
+        
+        current_time = datetime(2026, 2, 13, 14, 30, 9, tzinfo=self.tz)
+        today_date = current_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_ts = str(int(today_date.timestamp()))
+        
+        data = {
+            "fact": {
+                "data": {
+                    today_ts: {
+                        "GPV1.1": {
+                            "15": "second",  # 14:30-15:00
+                            "16": "no",      # 15:00-16:00
+                            "17": "no",      # 16:00-17:00
+                        }
+                    }
+                }
+            }
+        }
+        
+        next_outage = self.parser.get_next_outage(data, from_time=current_time)
+        self.assertIsNotNone(next_outage)
+        self.assertEqual(next_outage.start, today_date.replace(hour=14, minute=30))
+        self.assertEqual(next_outage.end, today_date.replace(hour=17, minute=0))
+
 if __name__ == '__main__':
     unittest.main()
