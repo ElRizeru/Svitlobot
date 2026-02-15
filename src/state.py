@@ -22,7 +22,6 @@ class BotState:
     last_schedule_fingerprint: str = "" 
     last_light_message_id: Optional[int] = None
     last_light_duration: float = 0.0
-    schedule_data: Optional[Dict] = None
 
     @property
     def last_change(self) -> datetime:
@@ -38,6 +37,7 @@ class StateManager:
 
     def __init__(self) -> None:
         self.state: BotState = BotState()
+        self.schedule_data: Optional[Dict] = None
 
     async def load_state(self) -> None:
         try:
@@ -52,12 +52,17 @@ class StateManager:
                     last_schedule_fingerprint=data.get("last_schedule_fingerprint", ""),
                     last_light_message_id=data.get("last_light_message_id"),
                     last_light_duration=data.get("last_light_duration", 0.0),
-                    schedule_data=data.get("schedule_data"),
                 )
-                logger.info("State loaded from database")
+                logger.info("Metadata loaded from database")
             else:
-                logger.info("No state found in database, using defaults")
+                logger.info("No metadata found in database, using defaults")
                 self.state.set_last_change(datetime.now(ZoneInfo(TIMEZONE)))
+
+            # Load schedule separately
+            schedule_json = await get_state("schedule_cache")
+            if schedule_json:
+                self.schedule_data = json.loads(schedule_json)
+                logger.info("Schedule cache loaded")
 
         except Exception as e:
             logger.error(f"Failed to load state: {e}")
@@ -65,6 +70,7 @@ class StateManager:
             self.state.set_last_change(datetime.now(ZoneInfo(TIMEZONE)))
 
     async def save(self) -> None:
+        """Saves only metadata to 'bot_state' key."""
         try:
             data = asdict(self.state)
             await set_state("bot_state", json.dumps(data))
@@ -72,9 +78,14 @@ class StateManager:
             logger.error(f"Failed to save state: {e}")
 
     async def set_schedule_data(self, data: Dict) -> None:
-        self.state.schedule_data = data
-        await self.save()
-
+        """Saves schedule data to a separate 'schedule_cache' key."""
+        try:
+            self.schedule_data = data
+            await set_state("schedule_cache", json.dumps(data))
+            logger.info("Schedule cache saved to database")
+        except Exception as e:
+            logger.error(f"Failed to save schedule data: {e}")
+            
     async def set_light_on(
         self, is_on: bool, custom_time: Optional[datetime] = None
     ) -> Optional[float]:

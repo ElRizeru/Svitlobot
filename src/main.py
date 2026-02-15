@@ -70,7 +70,7 @@ class SvitloBot:
         logger.info("Starting Svitlobot...")
         await init_db()
         await self.state_manager.load_state()
-        self.schedule_data = self.state_manager.state.schedule_data
+        self.schedule_data = self.state_manager.schedule_data
 
         self.session = aiohttp.ClientSession()
 
@@ -217,11 +217,8 @@ class SvitloBot:
                     logger.info(f"Schedule for group {self.schedule_parser.group} hasn't changed. Skipping notification.")
                     await self.state_manager.update_commit_sha(new_sha)
                     
-                    if self.schedule_data is None or self.state_manager.state.schedule_data is None:
-                        self.schedule_data = data
+                    if self.state_manager.schedule_data is None:
                         await self.state_manager.set_schedule_data(data)
-                    else:
-                        self.schedule_data = data
                     
                     await self._update_light_message_schedule()
                     return
