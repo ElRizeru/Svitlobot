@@ -1,7 +1,8 @@
+import json
 import logging
 import time
 from datetime import datetime
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiosqlite
 
@@ -57,6 +58,16 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS system_state (
                 key TEXT PRIMARY KEY,
                 value TEXT
+            )
+        """)
+
+        await self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS schedule (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                schedule_data TEXT NOT NULL,
+                last_updated TEXT NOT NULL,
+                update_message TEXT,
+                created_at TEXT
             )
         """)
 
@@ -149,3 +160,38 @@ async def get_events_range(
     except Exception as e:
         logger.error(f"Failed to fetch events: {e}")
         return []
+
+
+async def save_schedule(
+    schedule_data: Dict, last_updated: str, update_message: Optional[str] = None
+) -> None:
+    created_at = datetime.now(ZoneInfo(TIMEZONE)).isoformat()
+    try:
+        await db_manager.conn.execute(
+            "INSERT INTO schedule (schedule_data, last_updated, update_message, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (json.dumps(schedule_data), last_updated, update_message, created_at),
+        )
+        await db_manager.conn.commit()
+        logger.info(f"Schedule saved, last_updated={last_updated}")
+    except Exception as e:
+        logger.error(f"Failed to save schedule: {e}")
+
+
+async def get_latest_schedule() -> Optional[Dict]:
+    try:
+        cursor = await db_manager.conn.execute(
+            "SELECT schedule_data, last_updated, update_message "
+            "FROM schedule ORDER BY id DESC LIMIT 1"
+        )
+        row = await cursor.fetchone()
+        if row:
+            return {
+                "data": json.loads(row[0]),
+                "last_updated": row[1],
+                "update_message": row[2],
+            }
+        return None
+    except Exception as e:
+        logger.error(f"Failed to get latest schedule: {e}")
+        return None

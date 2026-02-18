@@ -3,7 +3,11 @@ import os
 import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from database import DatabaseManager, init_db, close_db, log_event, log_voltage, set_state, get_state
+from database import (
+    DatabaseManager, init_db, close_db,
+    log_event, log_voltage, set_state, get_state,
+    save_schedule, get_latest_schedule,
+)
 from config import TIMEZONE
 
 class TestDatabase(unittest.IsolatedAsyncioTestCase):
@@ -46,6 +50,33 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
         row = await cursor.fetchone()
         self.assertEqual(row[0], 220.5)
         self.assertEqual(row[1], 123)
+
+    async def test_save_and_get_schedule(self):
+        schedule_data = {
+            "regionId": "kyiv-region",
+            "lastUpdated": "2026-02-18T18:00:00Z",
+            "fact": {"data": {"1771365600": {"GPV6.2": {"1": "yes", "2": "no"}}}},
+        }
+        await save_schedule(schedule_data, "2026-02-18T18:00:00Z", update_message="Test caption")
+
+        result = await get_latest_schedule()
+        self.assertIsNotNone(result)
+        self.assertEqual(result["data"]["regionId"], "kyiv-region")
+        self.assertEqual(result["last_updated"], "2026-02-18T18:00:00Z")
+        self.assertEqual(result["update_message"], "Test caption")
+
+    async def test_get_latest_schedule_empty(self):
+        result = await get_latest_schedule()
+        self.assertIsNone(result)
+
+    async def test_save_schedule_returns_latest(self):
+        await save_schedule({"v": 1}, "2026-01-01T00:00:00Z")
+        await save_schedule({"v": 2}, "2026-02-01T00:00:00Z", update_message="newer")
+
+        result = await get_latest_schedule()
+        self.assertIsNotNone(result)
+        self.assertEqual(result["data"]["v"], 2)
+        self.assertEqual(result["update_message"], "newer")
 
 if __name__ == '__main__':
     unittest.main()

@@ -21,7 +21,7 @@ from config import (
     TELEGRAM_CHAT_ID,
     TIMEZONE,
 )
-from database import close_db, init_db, log_event, log_voltage
+from database import close_db, init_db, log_event, log_voltage, save_schedule, get_latest_schedule
 from messages import (
     format_light_off_message,
     format_light_on_message,
@@ -70,7 +70,11 @@ class SvitloBot:
         logger.info("Starting Svitlobot...")
         await init_db()
         await self.state_manager.load_state()
-        self.schedule_data = self.state_manager.state.schedule_data
+
+        saved = await get_latest_schedule()
+        if saved:
+            self.schedule_data = saved["data"]
+            logger.info("Schedule loaded from database")
 
         self.session = aiohttp.ClientSession()
 
@@ -156,16 +160,17 @@ class SvitloBot:
                 light_on = self.state_manager.state.light_on
                 
                 next_event = None
+                is_tomorrow = False
                 if light_on:
-                    next_event = self.schedule_parser.get_next_outage(self.schedule_data) if self.schedule_data else None
+                    next_event, is_tomorrow = self.schedule_parser.get_next_outage(self.schedule_data) if self.schedule_data else (None, False)
                 else:
-                    next_event = self.schedule_parser.get_next_power_on(self.schedule_data) if self.schedule_data else None
+                    next_event, is_tomorrow = self.schedule_parser.get_next_power_on(self.schedule_data) if self.schedule_data else (None, False)
                 
                 stats = await get_voltage_stats()
                 chart_bytes = await generate_voltage_chart()
                 
                 caption = format_voltage_caption(
-                    light_on, duration, voltage, stats, next_event, event_time=event_time
+                    light_on, duration, voltage, stats, next_event, event_time=event_time, is_tomorrow=is_tomorrow
                 )
                 
                 if chart_bytes:
@@ -212,23 +217,24 @@ class SvitloBot:
                 last_fingerprint = self.state_manager.state.last_schedule_fingerprint
                 
                 self.schedule_data = data
+                filtered = self._filter_schedule_for_group(data)
+                last_updated = data.get("lastUpdated", datetime.now(ZoneInfo(TIMEZONE)).isoformat())
                 
                 if new_fingerprint == last_fingerprint:
                     logger.info(f"Schedule for group {self.schedule_parser.group} hasn't changed. Skipping notification.")
                     await self.state_manager.update_commit_sha(new_sha)
                     
-                    if self.schedule_data is None or self.state_manager.state.schedule_data is None:
+                    if self.schedule_data is None:
                         self.schedule_data = data
-                        await self.state_manager.set_schedule_data(data)
-                    else:
-                        self.schedule_data = data
+                        await save_schedule(filtered, last_updated)
                     
                     await self._update_light_message_schedule()
                     return
 
                 logger.info("Schedule fingerprint changed. Sending update.")
                 await self.state_manager.update_schedule_state(new_sha, new_fingerprint)
-                await self.state_manager.set_schedule_data(data)
+                caption = self.schedule_parser.format_full_caption(data)
+                await save_schedule(filtered, last_updated, update_message=caption)
                 await self._send_schedule_update(data, image_bytes)
             else:
                 pass
@@ -260,8 +266,8 @@ class SvitloBot:
             else:
                 duration = self.state_manager.state.last_light_duration
                 event_time = self.state_manager.state.last_change
-                next_on = self.schedule_parser.get_next_power_on(self.schedule_data) if self.schedule_data else None
-                updated_text = format_light_off_message(duration, next_on, off_time=event_time)
+                next_on, is_tomorrow = self.schedule_parser.get_next_power_on(self.schedule_data) if self.schedule_data else (None, False)
+                updated_text = format_light_off_message(duration, next_on, off_time=event_time, is_tomorrow=is_tomorrow)
                 await self.bot.edit_message_text(chat_id=TELEGRAM_CHAT_ID, message_id=message_id, text=updated_text)
         except Exception as e:
             logger.debug(f"Could not update status message: {e}")
@@ -277,8 +283,8 @@ class SvitloBot:
         real_duration = await self.state_manager.set_light_on(False, custom_time=event_time) or duration
         await log_event("OFF")
 
-        next_on = self.schedule_parser.get_next_power_on(self.schedule_data) if self.schedule_data else None
-        msg = format_light_off_message(real_duration, next_on, off_time=event_time)
+        next_on, is_tomorrow = self.schedule_parser.get_next_power_on(self.schedule_data) if self.schedule_data else (None, False)
+        msg = format_light_off_message(real_duration, next_on, off_time=event_time, is_tomorrow=is_tomorrow)
 
         try:
             sent_msg = await self.bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=msg)
@@ -297,13 +303,13 @@ class SvitloBot:
         real_duration = await self.state_manager.set_light_on(True) or duration
         await log_event("ON")
 
-        next_outage = self.schedule_parser.get_next_outage(self.schedule_data) if self.schedule_data else None
+        next_outage, is_tomorrow = self.schedule_parser.get_next_outage(self.schedule_data) if self.schedule_data else (None, False)
         voltage = await self.voltage_monitor.get_voltage_now()
         stats = await get_voltage_stats()
         chart_bytes = await generate_voltage_chart()
         
         initial_msg = format_voltage_caption(
-            True, real_duration, voltage or 0.0, stats, next_outage, event_time=event_time
+            True, real_duration, voltage or 0.0, stats, next_outage, event_time=event_time, is_tomorrow=is_tomorrow
         )
 
         try:
@@ -321,6 +327,23 @@ class SvitloBot:
         except TelegramAPIError:
             logger.exception("Failed to send ON message")
             self.voltage_monitor.start()
+
+    def _filter_schedule_for_group(self, data: Dict) -> Dict:
+        if not data or "fact" not in data:
+            return data
+        
+        group = self.schedule_parser.group
+        filtered = {
+            "regionId": data.get("regionId"),
+            "lastUpdated": data.get("lastUpdated"),
+            "fact": {"data": {}},
+        }
+        
+        for ts_str, groups in data.get("fact", {}).get("data", {}).items():
+            if group in groups:
+                filtered["fact"]["data"][ts_str] = {group: groups[group]}
+        
+        return filtered
 
 
 async def main() -> None:

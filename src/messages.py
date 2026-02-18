@@ -36,6 +36,7 @@ def format_light_off_message(
     duration_seconds: float,
     next_power_on: Optional[datetime] = None,
     off_time: Optional[datetime] = None,
+    is_tomorrow: bool = False,
 ) -> str:
 
     event_time = off_time if off_time else get_current_time()
@@ -49,7 +50,8 @@ def format_light_off_message(
 
     if next_power_on:
         next_on_str = format_time(next_power_on)
-        lines.append(f"🗓 Очікуємо за графіком о <b>{next_on_str}</b>")
+        tomorrow_label = " (завтра)" if is_tomorrow else ""
+        lines.append(f"🗓 Очікуємо за графіком{tomorrow_label} о <b>{next_on_str}</b>")
 
     return "\n".join(lines)
 
@@ -60,6 +62,7 @@ def format_light_on_message(
     voltage: Optional[float] = None,
     voltage_time: Optional[datetime] = None,
     event_time: Optional[datetime] = None,
+    is_tomorrow: bool = False,
 ) -> str:
 
     now = get_current_time()
@@ -75,7 +78,8 @@ def format_light_on_message(
     if next_outage:
         start_str = format_time(next_outage.start)
         end_str = format_time(next_outage.end)
-        lines.append(f"🗓 Наступне планове: <b>{start_str} - {end_str}</b>")
+        tomorrow_label = " (завтра)" if is_tomorrow else ""
+        lines.append(f"🗓 Наступне планове{tomorrow_label}: <b>{start_str} - {end_str}</b>")
 
     if voltage is not None and voltage > 0:
         v_time = voltage_time or now
@@ -91,6 +95,7 @@ def format_light_on_message_without_voltage(
     duration_seconds: float,
     next_outage: Optional[OutagePeriod] = None,
     event_time: Optional[datetime] = None,
+    is_tomorrow: bool = False,
 ) -> str:
 
     now = get_current_time()
@@ -106,7 +111,8 @@ def format_light_on_message_without_voltage(
     if next_outage:
         start_str = format_time(next_outage.start)
         end_str = format_time(next_outage.end)
-        lines.append(f"🗓 Наступне планове: <b>{start_str} - {end_str}</b>")
+        tomorrow_label = " (завтра)" if is_tomorrow else ""
+        lines.append(f"🗓 Наступне планове{tomorrow_label}: <b>{start_str} - {end_str}</b>")
 
     lines.append("⚡️ Напруга в мережі: зчитування...")
 
@@ -120,6 +126,7 @@ def format_voltage_caption(
     stats: Tuple[Optional[float], Optional[float], Optional[float]],
     next_event: Optional[datetime | OutagePeriod] = None,
     event_time: Optional[datetime] = None,
+    is_tomorrow: bool = False,
 ) -> str:
     now = get_current_time()
     header_time = event_time if event_time else now
@@ -136,13 +143,14 @@ def format_voltage_caption(
     ]
 
     if next_event:
+        tomorrow_label = " (завтра)" if is_tomorrow else ""
         if isinstance(next_event, OutagePeriod):
             start_str = format_time(next_event.start)
             end_str = format_time(next_event.end)
-            lines.append(f"🗓 Наступне планове: <b>{start_str} - {end_str}</b>")
+            lines.append(f"🗓 Наступне планове{tomorrow_label}: <b>{start_str} - {end_str}</b>")
         else:
             next_on_str = format_time(next_event)
-            lines.append(f"🗓 Очікуємо за графіком о <b>{next_on_str}</b>")
+            lines.append(f"🗓 Очікуємо за графіком{tomorrow_label} о <b>{next_on_str}</b>")
 
     lines.append(f"\n⚡️ Напруга: <b>{voltage:.1f} V</b>")
     

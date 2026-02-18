@@ -22,7 +22,6 @@ class BotState:
     last_schedule_fingerprint: str = "" 
     last_light_message_id: Optional[int] = None
     last_light_duration: float = 0.0
-    schedule_data: Optional[Dict] = None
 
     @property
     def last_change(self) -> datetime:
@@ -52,7 +51,6 @@ class StateManager:
                     last_schedule_fingerprint=data.get("last_schedule_fingerprint", ""),
                     last_light_message_id=data.get("last_light_message_id"),
                     last_light_duration=data.get("last_light_duration", 0.0),
-                    schedule_data=data.get("schedule_data"),
                 )
                 logger.info("State loaded from database")
             else:
@@ -70,10 +68,6 @@ class StateManager:
             await set_state("bot_state", json.dumps(data))
         except Exception as e:
             logger.error(f"Failed to save state: {e}")
-
-    async def set_schedule_data(self, data: Dict) -> None:
-        self.state.schedule_data = data
-        await self.save()
 
     async def set_light_on(
         self, is_on: bool, custom_time: Optional[datetime] = None

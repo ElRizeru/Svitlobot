@@ -4,7 +4,7 @@ import hashlib
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -199,51 +199,43 @@ class ScheduleParser:
             outages.append(OutagePeriod(cur_start, cur_end))
         return outages
 
-    def get_next_outage(self, data: Dict, from_time: datetime = None) -> Optional[OutagePeriod]:
+    def get_next_outage(self, data: Dict, from_time: datetime = None) -> Tuple[Optional[OutagePeriod], bool]:
         from_time = from_time or datetime.now(ZoneInfo(TIMEZONE))
         
+        # 1. Search today's outages — return first one that hasn't ended yet
         for o in self.get_outages_for_date(data, from_time):
             if o.end > from_time:
-                return o
+                return o, False
         
+        # 2. All today's outages are done — search tomorrow
         tmr_date = from_time + timedelta(days=1)
         tmr_outages = self.get_outages_for_date(data, tmr_date)
-        return tmr_outages[0] if tmr_outages else None
+        if tmr_outages:
+            return tmr_outages[0], True
+        
+        return None, False
 
-    def get_next_power_on(self, data: Dict, from_time: datetime = None) -> Optional[datetime]:
+    def get_next_power_on(self, data: Dict, from_time: datetime = None) -> Tuple[Optional[datetime], bool]:
         from_time = from_time or datetime.now(ZoneInfo(TIMEZONE))
         outages = self.get_outages_for_date(data, from_time)
 
-        # 1. If inside an outage, return its end
+        # 1. Inside an outage — return its end
         for o in outages:
             if o.start <= from_time < o.end:
-                return o.end
+                return o.end, False
 
-        # 2. If in a gap after an outage, return that outage's end (start of the gap)
-        # Find the last outage that ended before now
+        # 2. In a gap after an outage — return that outage's end
         last_outage_end = None
         for o in outages:
             if o.end <= from_time:
                 last_outage_end = o.end
         
         if last_outage_end:
-            return last_outage_end
+            return last_outage_end, False
 
-        # 3. If before the first outage of the day (morning gap), return start of day
-        current_day_start = from_time.replace(hour=0, minute=0, second=0, microsecond=0)
-        if outages and from_time < outages[0].start:
-            return current_day_start
-
-        # 4. If no outages today, return start of day
-        if not outages:
-            return current_day_start
-            
-        # Fallback to tomorrow if somehow we are past all outages?
-        # Use existing logic for looking ahead if needed? 
-        # But if we are past all outages, we are in the last gap of the day.
-        # last_outage_end would capture it (the last outage of the day).
-        
-        return None
+        # 3. Before the first outage or no outages today
+        # This means light should be on, so no expected power-on
+        return None, False
 
     def format_schedule_caption(self, data: Dict, date: datetime) -> str:
         tz = ZoneInfo(TIMEZONE)
